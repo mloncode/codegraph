@@ -1,4 +1,4 @@
-package gitgraph
+package git
 
 import (
 	"context"
@@ -10,16 +10,13 @@ import (
 	"gopkg.in/src-d/go-git.v4/utils/merkletrie"
 )
 
-// Import imports git repository into graph database
-// Returns number of imported commits
-func (g *GitGraph) Import(ctx context.Context, gitpath string) (int, error) {
+// AsQuads writes a git repository history as a set of quads.
+// It returns the number of commits processed.
+func AsQuads(w quad.Writer, gitpath string) (int, error) {
 	repo, repoIRI, err := openGit(gitpath)
 	if err != nil {
 		return 0, err
 	}
-
-	w := graph.NewWriter(g.store)
-	defer w.Close()
 
 	if err = w.WriteQuad(quad.Quad{
 		Subject:   nodeType,
@@ -44,6 +41,15 @@ func (g *GitGraph) Import(ctx context.Context, gitpath string) (int, error) {
 	return n, err
 }
 
+// Import imports git repository into graph database
+// Returns number of imported commits
+func (g *GitGraph) Import(ctx context.Context, gitpath string) (int, error) {
+	w := graph.NewWriter(g.store)
+	defer w.Close()
+
+	return AsQuads(w, gitpath)
+}
+
 func openGit(gitpath string) (*git.Repository, quad.IRI, error) {
 	repoIRI := quad.IRI(gitpath)
 
@@ -61,7 +67,7 @@ func openGit(gitpath string) (*git.Repository, quad.IRI, error) {
 	return repo, repoIRI, nil
 }
 
-func importCommit(w graph.BatchWriter, repoIRI quad.IRI, commit *object.Commit) error {
+func importCommit(w quad.Writer, repoIRI quad.IRI, commit *object.Commit) error {
 	commitIRI := quad.IRI(commit.Hash.String())
 
 	if err := w.WriteQuad(quad.Quad{
@@ -75,17 +81,17 @@ func importCommit(w graph.BatchWriter, repoIRI quad.IRI, commit *object.Commit) 
 
 	// dump parents
 	for _, p := range commit.ParentHashes {
-		if _, err := w.WriteQuads([]quad.Quad{
-			quad.Quad{
-				Subject:   commitIRI,
-				Predicate: prdParent,
-				Object:    quad.IRI(p.String()),
-			},
-			quad.Quad{
-				Subject:   quad.IRI(p.String()),
-				Predicate: prdChild,
-				Object:    commitIRI,
-			},
+		if err := w.WriteQuad(quad.Quad{
+			Subject:   commitIRI,
+			Predicate: prdParent,
+			Object:    quad.IRI(p.String()),
+		}); err != nil {
+			return err
+		}
+		if err := w.WriteQuad(quad.Quad{
+			Subject:   quad.IRI(p.String()),
+			Predicate: prdChild,
+			Object:    commitIRI,
 		}); err != nil {
 			return err
 		}
@@ -133,7 +139,7 @@ func importCommit(w graph.BatchWriter, repoIRI quad.IRI, commit *object.Commit) 
 	return nil
 }
 
-func importFile(w graph.BatchWriter, commitIRI quad.IRI, file *object.File) error {
+func importFile(w quad.Writer, commitIRI quad.IRI, file *object.File) error {
 	fileIRI := quad.IRI(file.Hash.String())
 
 	return w.WriteQuad(quad.Quad{
@@ -144,7 +150,7 @@ func importFile(w graph.BatchWriter, commitIRI quad.IRI, file *object.File) erro
 	})
 }
 
-func importChange(w graph.BatchWriter, commitIRI quad.IRI, change *object.Change) error {
+func importChange(w quad.Writer, commitIRI quad.IRI, change *object.Change) error {
 	action, err := change.Action()
 	if err != nil {
 		return err

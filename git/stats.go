@@ -1,4 +1,4 @@
-package gitgraph
+package git
 
 import (
 	"context"

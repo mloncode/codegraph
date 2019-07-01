@@ -17,6 +17,7 @@ const (
 	predFile = quad.IRI("uast:File")
 )
 
+// AsQuads converts a UAST into a set of quads.
 func AsQuads(w quad.Writer, file quad.Value, n nodes.Node) error {
 	ids, err := writeNodeQuads(w, file, n)
 	if err != nil {
