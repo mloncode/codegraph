@@ -10,15 +10,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/MLonCode/codegraph/uast"
 	"github.com/bblfsh/sdk/v3/uast/uastyaml"
 	"github.com/cayleygraph/cayley/quad"
 	"github.com/cayleygraph/cayley/quad/nquads"
 	"github.com/spf13/cobra"
-	"github.com/MLonCode/codegraph"
 )
 
 func init() {
-	cmdUAST  := &cobra.Command{
+	cmdUAST := &cobra.Command{
 		Use:   "uast <command>",
 		Short: "UAST-related commands",
 	}
@@ -81,7 +81,7 @@ func init() {
 				if err != nil {
 					return err
 				}
-				return codegraph.AsQuads(qw, fid, ast)
+				return uast.AsQuads(qw, fid, ast)
 			}()
 			if err != nil {
 				return err
@@ -94,5 +94,5 @@ func init() {
 		}
 		return nil
 	}
-	Root.AddCommand(cmdUAST)
+	cmdUAST.AddCommand(cmdQuads)
 }

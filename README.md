@@ -1,8 +1,100 @@
 # codegraph
 
-Experiments with UAST graph.
+Experiments with Git/UAST graph.
 
-## Installation
+## Git 
+
+Proof of concept - modeling git (commits) with graph database.
+
+...a little bit inspired by ["Modeling Git Commits with Neo4j"](https://reflectoring.io/git-neo4j/)
+
+### Data model
+
+<img src="git_model.png" name="model" />
+
+#### repo
+
+A repo nodes represent git repositories. Every repo keeps connections with all your commits.
+
+#### commit
+
+A commit node represents a commit in git log history. Commits are connected to own children and parents. Also, from commits we can go to files which they contain.
+
+#### file
+
+A file node represents a file in git repository. Every commit is connected to own files, but file also can be connected with commits which touched (added, removed, or modified) the file.
+
+### Usage
+
+This PoC exposes an API and following tools:
+* import - lets you import a git repository into graph database (backed by cayley.io).
+```
+codegraph git import [options] <repo>
+  -db string
+    	database directory (default ".")
+```
+
+* export - opens a graph database and exports _quads_ in raw format.
+```
+codegraph git export [options]
+  -db string
+    	database directory (default ".")
+```
+
+* stats  - prints commit statistics per repo (based on data in graph database).
+```
+codegraph git stats [options]
+  -db string
+    	database directory (default ".")
+  -limit int
+    	top commits per git repository (0 means no limit)
+  -nomerge
+    	do not show merge commits
+  -sort string
+    	sort commits by [add, remove, modify, touch, file] (default "touch")
+
+
+
+codegraph git stats -limit 3 -sort touch --nomerge
+
+
+<git@gitlab.com:kuba--/gitgraph.git>
+--
+commit: <198af24465fdfe4b9a74970fd13721a48cd29558>
+"commit 198af24465fdfe4b9a74970fd13721a48cd29558
+Author: Kuba Podgórski
+Date:   Wed Jun 26 08:22:47 2019 +0000
+
+    poc implementation
+
+    three tools - import git repo into db, export db to raw, print stats
+
+"
+12 files, 9 touched (+, -, #), 9 added(+), 0 removed(-), 0 modified(#)
+--
+commit: <03a5673c3029c599444fad2be6ac37d041584af5>
+"commit 03a5673c3029c599444fad2be6ac37d041584af5
+Author: kuba--
+Date:   Thu Jun 27 01:06:45 2019 +0200
+
+    update docs
+
+"
+13 files, 2 touched (+, -, #), 1 added(+), 0 removed(-), 1 modified(#)
+--
+commit: <5a19dffa76b506f5627dfcea5d09fe84314bc1e4>
+"commit 5a19dffa76b506f5627dfcea5d09fe84314bc1e4
+Author: Kuba Podgórski
+Date:   Tue Jun 25 08:24:16 2019 +0000
+
+    Update README.md
+"
+3 files, 1 touched (+, -, #), 0 added(+), 0 removed(-), 1 modified(#)
+```
+
+## UAST
+
+### Installation
 
 Get the latest [release](https://github.com/cayleygraph/cayley/releases) of Cayley, to be able to query the results. 
 
@@ -10,7 +102,7 @@ Get the latest [release](https://github.com/cayleygraph/cayley/releases) of Cayl
 go install ./cmd/codegraph
 ```
 
-## Running
+### Running
 
 You will need some UAST files in the YML format. You can get them from any of
 [Babelfish drivers](https://github.com/search?utf8=%E2%9C%93&q=org%3Abblfsh+topic%3Ababelfish+topic%3Adriver&type=Repositories&ref=advsearch&l=&l=)
@@ -28,9 +120,9 @@ cayley http -i out.nq.gz
 
 Web interface should be available at http://127.0.0.1:64210.
 
-## Queries
+### Queries
 
-### All identifiers
+#### All identifiers
 
 **Gizmo** query language (Tinkerpop's Gremlin inspired):
 
@@ -56,7 +148,7 @@ g.V().
 }
 ```
 
-### All imports
+#### All imports
 
 **Gizmo**:
 
@@ -120,7 +212,7 @@ Instead we extract the path node, and optionally load path-related fields from t
 }
 ```
 
-### All files that import "fmt"
+#### All files that import "fmt"
 
 **Gizmo**:
 
@@ -142,7 +234,7 @@ g.V().
 
 Again, **GraphQL** doesn't have an equivalent.
 
-### Import stats
+#### Import stats
 
 **Gizmo**, _requires_ a helper from above:
 

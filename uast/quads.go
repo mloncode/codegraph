@@ -1,4 +1,4 @@
-package codegraph
+package uast
 
 import (
 	"fmt"
