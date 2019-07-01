@@ -5,27 +5,36 @@ import (
 	"github.com/cayleygraph/cayley/graph"
 	_ "github.com/cayleygraph/cayley/graph/kv/bolt"
 	"github.com/cayleygraph/cayley/quad"
+	"github.com/cayleygraph/cayley/voc/rdf"
 )
 
 const (
 	defaultKV = "bolt"
 
-	// nodeType node keep references to all to level nodes (so far used only for repos)
-	nodeType = quad.IRI("type")
+	// typeRepo node keep (back) references to all to level nodes (so far used only for repos)
+	typeRepo = quad.IRI("git:repo")
 
-	// repo predicate
-	prdRepo = quad.IRI("repo")
+	// node type predicate
+	prdType = quad.IRI(rdf.Type)
 
 	// commits
-	prdCommit = quad.IRI("commit")
-	prdChild  = quad.IRI("child")
-	prdParent = quad.IRI("parent")
+	prdCommit        = quad.IRI("git:commit")
+	prdMetadata      = quad.IRI("git:metadata")
+	prdMessage       = quad.IRI("git:message")
+	prdAuthorName    = quad.IRI("git:authorName")
+	prdAuthorEmail   = quad.IRI("git:authorEmail")
+	prdAuthorTS      = quad.IRI("git:authorTS")
+	prdCommiterName  = quad.IRI("git:commiterName")
+	prdCommiterEmail = quad.IRI("git:commiterEmail")
+	prdCommiterTS    = quad.IRI("git:commiterTS")
+	prdChild         = quad.IRI("git:child")
+	prdParent        = quad.IRI("git:parent")
 
 	// files
-	prdFile   = quad.IRI("file")
-	prdAdd    = quad.IRI("add")
-	prdRemove = quad.IRI("remove")
-	prdModify = quad.IRI("modify")
+	prdFile   = quad.IRI("git:file")
+	prdAdd    = quad.IRI("git:add")
+	prdRemove = quad.IRI("git:remove")
+	prdModify = quad.IRI("git:modify")
 )
 
 // GitGraph is a opaque type for graph database handler.

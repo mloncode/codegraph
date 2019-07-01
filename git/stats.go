@@ -9,7 +9,6 @@ import (
 	"github.com/cayleygraph/cayley"
 	"github.com/cayleygraph/cayley/graph"
 	"github.com/cayleygraph/cayley/graph/path"
-	"github.com/cayleygraph/cayley/graph/shape"
 	"github.com/cayleygraph/cayley/quad"
 )
 
@@ -37,7 +36,7 @@ type (
 
 // PrintStats prints commit statistics
 func (g *GitGraph) PrintStats(ctx context.Context, limit int, by SortBy, nomerge bool) error {
-	it, _ := cayley.StartPath(g.store, nodeType).Out(prdRepo).BuildIterator().Optimize()
+	it, _ := cayley.StartPath(g.store, typeRepo).In(prdType).BuildIterator().Optimize()
 	it, _ = g.store.OptimizeIterator(it)
 	defer it.Close()
 
@@ -91,15 +90,10 @@ func commitStats(ctx context.Context, qs graph.QuadStore, commit quad.Value) *Co
 		Hash: commit.String(),
 	}
 
-	sh := shape.Quads{
-		{Dir: quad.Predicate, Values: shape.Lookup{prdCommit}},
-		{Dir: quad.Object, Values: shape.Lookup{commit}},
-	}
-
-	it, _ := sh.BuildIterator(qs).Optimize()
+	it, _ := path.StartPath(qs, commit).Out(prdMetadata).BuildIterator().Optimize()
 	it, _ = qs.OptimizeIterator(it)
 	if it.Next(ctx) {
-		if lbl := qs.Quad(it.Result()).Label; lbl != nil {
+		if lbl := qs.NameOf(it.Result()); lbl != nil {
 			cs.Label = lbl.String()
 		}
 	}

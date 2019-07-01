@@ -19,9 +19,9 @@ func AsQuads(w quad.Writer, gitpath string) (int, error) {
 	}
 
 	if err = w.WriteQuad(quad.Quad{
-		Subject:   nodeType,
-		Predicate: prdRepo,
-		Object:    repoIRI,
+		Subject:   repoIRI,
+		Predicate: prdType,
+		Object:    typeRepo,
 	}); err != nil {
 		return 0, err
 	}
@@ -68,13 +68,68 @@ func openGit(gitpath string) (*git.Repository, quad.IRI, error) {
 }
 
 func importCommit(w quad.Writer, repoIRI quad.IRI, commit *object.Commit) error {
-	commitIRI := quad.IRI(commit.Hash.String())
+	commitIRI := quad.IRI("sha1:" + commit.Hash.String())
 
 	if err := w.WriteQuad(quad.Quad{
 		Subject:   repoIRI,
 		Predicate: prdCommit,
 		Object:    commitIRI,
-		Label:     quad.String(commit.String()),
+	}); err != nil {
+		return err
+	}
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   commitIRI,
+		Predicate: prdMetadata,
+		Object:    quad.String(commit.String()),
+	}); err != nil {
+		return err
+	}
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   commitIRI,
+		Predicate: prdMessage,
+		Object:    quad.String(commit.Message),
+	}); err != nil {
+		return err
+	}
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   commitIRI,
+		Predicate: prdAuthorName,
+		Object:    quad.String(commit.Author.Name),
+	}); err != nil {
+		return err
+	}
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   commitIRI,
+		Predicate: prdAuthorEmail,
+		Object:    quad.IRI(commit.Author.Email),
+	}); err != nil {
+		return err
+	}
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   commitIRI,
+		Predicate: prdAuthorTS,
+		Object:    quad.Time(commit.Author.When),
+	}); err != nil {
+		return err
+	}
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   commitIRI,
+		Predicate: prdCommiterName,
+		Object:    quad.String(commit.Committer.Name),
+	}); err != nil {
+		return err
+	}
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   commitIRI,
+		Predicate: prdCommiterEmail,
+		Object:    quad.IRI(commit.Committer.Email),
+	}); err != nil {
+		return err
+	}
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   commitIRI,
+		Predicate: prdCommiterTS,
+		Object:    quad.Time(commit.Committer.When),
 	}); err != nil {
 		return err
 	}
@@ -84,12 +139,12 @@ func importCommit(w quad.Writer, repoIRI quad.IRI, commit *object.Commit) error 
 		if err := w.WriteQuad(quad.Quad{
 			Subject:   commitIRI,
 			Predicate: prdParent,
-			Object:    quad.IRI(p.String()),
+			Object:    quad.IRI("sha1:" + p.String()),
 		}); err != nil {
 			return err
 		}
 		if err := w.WriteQuad(quad.Quad{
-			Subject:   quad.IRI(p.String()),
+			Subject:   quad.IRI("sha1:" + p.String()),
 			Predicate: prdChild,
 			Object:    commitIRI,
 		}); err != nil {
@@ -140,7 +195,7 @@ func importCommit(w quad.Writer, repoIRI quad.IRI, commit *object.Commit) error 
 }
 
 func importFile(w quad.Writer, commitIRI quad.IRI, file *object.File) error {
-	fileIRI := quad.IRI(file.Hash.String())
+	fileIRI := quad.IRI("sha1:" + file.Hash.String())
 
 	return w.WriteQuad(quad.Quad{
 		Subject:   commitIRI,
@@ -156,8 +211,8 @@ func importChange(w quad.Writer, commitIRI quad.IRI, change *object.Change) erro
 		return err
 	}
 
-	fromIRI := quad.IRI(change.From.TreeEntry.Hash.String())
-	toIRI := quad.IRI(change.To.TreeEntry.Hash.String())
+	fromIRI := quad.IRI("sha1:" + change.From.TreeEntry.Hash.String())
+	toIRI := quad.IRI("sha1:" + change.To.TreeEntry.Hash.String())
 
 	switch action {
 	case merkletrie.Delete:
