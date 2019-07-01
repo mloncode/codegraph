@@ -1,4 +1,4 @@
-module github.com/dennwc/uastgraph
+module github.com/MLonCode/codegraph
 
 go 1.12
 

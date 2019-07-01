@@ -7,8 +7,8 @@ import (
 )
 
 var Root = &cobra.Command{
-	Use:   "uastgraph",
-	Short: "tools for working on UAST graphs",
+	Use:   "codegraph",
+	Short: "tools for working with Git/UAST graphs",
 }
 
 func main() {

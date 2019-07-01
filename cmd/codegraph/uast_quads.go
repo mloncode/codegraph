@@ -13,11 +13,17 @@ import (
 	"github.com/bblfsh/sdk/v3/uast/uastyaml"
 	"github.com/cayleygraph/cayley/quad"
 	"github.com/cayleygraph/cayley/quad/nquads"
-	"github.com/dennwc/uastgraph"
 	"github.com/spf13/cobra"
+	"github.com/MLonCode/codegraph"
 )
 
 func init() {
+	cmdUAST  := &cobra.Command{
+		Use:   "uast <command>",
+		Short: "UAST-related commands",
+	}
+	Root.AddCommand(cmdUAST)
+
 	cmdQuads := &cobra.Command{
 		Use:   "quads <file> [<files>...]",
 		Short: "convert UAST file into quads",
@@ -75,7 +81,7 @@ func init() {
 				if err != nil {
 					return err
 				}
-				return uastgraph.AsQuads(qw, fid, ast)
+				return codegraph.AsQuads(qw, fid, ast)
 			}()
 			if err != nil {
 				return err
@@ -88,5 +94,5 @@ func init() {
 		}
 		return nil
 	}
-	Root.AddCommand(cmdQuads)
+	Root.AddCommand(cmdUAST)
 }

@@ -1,4 +1,4 @@
-# uastgraph
+# codegraph
 
 Experiments with UAST graph.
 
@@ -7,7 +7,7 @@ Experiments with UAST graph.
 Get the latest [release](https://github.com/cayleygraph/cayley/releases) of Cayley, to be able to query the results. 
 
 ```bash
-go install ./cmd/uastgraph
+go install ./cmd/codegraph
 ```
 
 ## Running
@@ -18,7 +18,7 @@ You will need some UAST files in the YML format. You can get them from any of
 
 Generate the graph data from UAST:
 ```bash
-uastgraph -o out.nq.gz ./fixtures/*.sem.uast
+codegraph uast quads -o out.nq.gz ./fixtures/*.sem.uast
 ```
 
 Import and run Cayley instance with the data:
