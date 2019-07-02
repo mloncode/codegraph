@@ -2,6 +2,8 @@ package git
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 
 	"github.com/cayleygraph/cayley/graph"
 	"github.com/cayleygraph/cayley/quad"
@@ -79,6 +81,13 @@ func importCommit(w quad.Writer, repoIRI quad.IRI, commit *object.Commit) error 
 	}
 	if err := w.WriteQuad(quad.Quad{
 		Subject:   commitIRI,
+		Predicate: prdType,
+		Object:    typeCommit,
+	}); err != nil {
+		return err
+	}
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   commitIRI,
 		Predicate: prdMetadata,
 		Object:    quad.String(commit.String()),
 	}); err != nil {
@@ -91,46 +100,10 @@ func importCommit(w quad.Writer, repoIRI quad.IRI, commit *object.Commit) error 
 	}); err != nil {
 		return err
 	}
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   commitIRI,
-		Predicate: prdAuthorName,
-		Object:    quad.String(commit.Author.Name),
-	}); err != nil {
+	if err := importSignature(w, commitIRI, prdAuthor, commit.Author); err != nil {
 		return err
 	}
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   commitIRI,
-		Predicate: prdAuthorEmail,
-		Object:    quad.IRI(commit.Author.Email),
-	}); err != nil {
-		return err
-	}
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   commitIRI,
-		Predicate: prdAuthorTS,
-		Object:    quad.Time(commit.Author.When),
-	}); err != nil {
-		return err
-	}
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   commitIRI,
-		Predicate: prdCommiterName,
-		Object:    quad.String(commit.Committer.Name),
-	}); err != nil {
-		return err
-	}
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   commitIRI,
-		Predicate: prdCommiterEmail,
-		Object:    quad.IRI(commit.Committer.Email),
-	}); err != nil {
-		return err
-	}
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   commitIRI,
-		Predicate: prdCommiterTS,
-		Object:    quad.Time(commit.Committer.When),
-	}); err != nil {
+	if err := importSignature(w, commitIRI, prdCommiter, commit.Committer); err != nil {
 		return err
 	}
 
@@ -194,15 +167,61 @@ func importCommit(w quad.Writer, repoIRI quad.IRI, commit *object.Commit) error 
 	return nil
 }
 
+func importSignature(w quad.Writer, commit, pred quad.IRI, sig object.Signature) error {
+	// auto-join authors on exact match
+	h := md5.Sum([]byte(sig.Name + "\x00" + sig.Email))
+	id := quad.BNode(hex.EncodeToString(h[:]))
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   commit,
+		Predicate: pred,
+		Object:    id,
+		Label:     quad.Time(sig.When),
+	}); err != nil {
+		return err
+	}
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   id,
+		Predicate: prdType,
+		Object:    typeAuthor,
+	}); err != nil {
+		return err
+	}
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   id,
+		Predicate: prdName,
+		Object:    quad.String(sig.Name),
+	}); err != nil {
+		return err
+	}
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   id,
+		Predicate: prdEmail,
+		Object:    quad.IRI(sig.Email),
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
 func importFile(w quad.Writer, commitIRI quad.IRI, file *object.File) error {
 	fileIRI := quad.IRI("sha1:" + file.Hash.String())
 
-	return w.WriteQuad(quad.Quad{
+	if err := w.WriteQuad(quad.Quad{
 		Subject:   commitIRI,
 		Predicate: prdFile,
 		Object:    fileIRI,
 		Label:     quad.String(file.Name),
-	})
+	}); err != nil {
+		return err
+	}
+	if err := w.WriteQuad(quad.Quad{
+		Subject:   fileIRI,
+		Predicate: prdType,
+		Object:    typeFile,
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func importChange(w quad.Writer, commitIRI quad.IRI, change *object.Change) error {

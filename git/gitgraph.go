@@ -6,29 +6,31 @@ import (
 	_ "github.com/cayleygraph/cayley/graph/kv/bolt"
 	"github.com/cayleygraph/cayley/quad"
 	"github.com/cayleygraph/cayley/voc/rdf"
+	"github.com/cayleygraph/cayley/voc/schema"
 )
 
 const (
 	defaultKV = "bolt"
 
 	// typeRepo node keep (back) references to all to level nodes (so far used only for repos)
-	typeRepo = quad.IRI("git:repo")
+	typeRepo   = quad.IRI("git:Repo")
+	typeCommit = quad.IRI("git:Commit")
+	typeFile   = quad.IRI("git:File")
+	typeAuthor = quad.IRI("git:Author")
 
 	// node type predicate
 	prdType = quad.IRI(rdf.Type)
 
 	// commits
-	prdCommit        = quad.IRI("git:commit")
-	prdMetadata      = quad.IRI("git:metadata")
-	prdMessage       = quad.IRI("git:message")
-	prdAuthorName    = quad.IRI("git:authorName")
-	prdAuthorEmail   = quad.IRI("git:authorEmail")
-	prdAuthorTS      = quad.IRI("git:authorTS")
-	prdCommiterName  = quad.IRI("git:commiterName")
-	prdCommiterEmail = quad.IRI("git:commiterEmail")
-	prdCommiterTS    = quad.IRI("git:commiterTS")
-	prdChild         = quad.IRI("git:child")
-	prdParent        = quad.IRI("git:parent")
+	prdCommit   = quad.IRI("git:commit")
+	prdMetadata = quad.IRI("git:metadata")
+	prdMessage  = quad.IRI("git:message")
+	prdAuthor   = quad.IRI("git:author")
+	prdCommiter = quad.IRI("git:commiter")
+	prdName     = quad.IRI(schema.Name)
+	prdEmail    = quad.IRI("git:email")
+	prdChild    = quad.IRI("git:child")
+	prdParent   = quad.IRI("git:parent")
 
 	// files
 	prdFile   = quad.IRI("git:file")
