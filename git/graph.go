@@ -39,13 +39,13 @@ const (
 	prdModify = quad.IRI("git:modify")
 )
 
-// GitGraph is a opaque type for graph database handler.
-type GitGraph struct {
+// Graph is a opaque type for cayley graph database handler.
+type Graph struct {
 	store *cayley.Handle
 }
 
 // Open opens git graph database
-func Open(dbpath string) (*GitGraph, error) {
+func Open(dbpath string) (*Graph, error) {
 	err := graph.InitQuadStore(defaultKV, dbpath, nil)
 	if err != nil && err != graph.ErrDatabaseExists {
 		return nil, err
@@ -56,16 +56,16 @@ func Open(dbpath string) (*GitGraph, error) {
 		return nil, err
 	}
 
-	return &GitGraph{store}, nil
+	return &Graph{store}, nil
 }
 
 // Close closes git graph database (GitGraph is io.Closer)
-func Close(g *GitGraph) error {
+func Close(g *Graph) error {
 	return g.Close()
 }
 
 // Close implements io.Closer
-func (g *GitGraph) Close() error {
+func (g *Graph) Close() error {
 	if g.store != nil {
 		return g.store.Close()
 	}

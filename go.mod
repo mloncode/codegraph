@@ -1,4 +1,4 @@
-module github.com/MLonCode/codegraph
+module github.com/mloncode/codegraph
 
 go 1.12
 

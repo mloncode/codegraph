@@ -45,7 +45,7 @@ func AsQuads(w quad.Writer, gitpath string) (int, error) {
 
 // Import imports git repository into graph database
 // Returns number of imported commits
-func (g *GitGraph) Import(ctx context.Context, gitpath string) (int, error) {
+func (g *Graph) Import(_ context.Context, gitpath string) (int, error) {
 	w := graph.NewWriter(g.store)
 	defer w.Close()
 
