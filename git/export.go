@@ -9,7 +9,7 @@ import (
 
 // Export exports quads in raw format
 // Returns number of exported quads
-func (g *GitGraph) Export(ctx context.Context, w io.Writer) (int, error) {
+func (g *Graph) Export(ctx context.Context, w io.Writer) (int, error) {
 	qw := nquads.NewWriter(w)
 	defer qw.Close()
 

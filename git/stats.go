@@ -35,7 +35,7 @@ type (
 )
 
 // PrintStats prints commit statistics
-func (g *GitGraph) PrintStats(ctx context.Context, limit int, by SortBy, nomerge bool) error {
+func (g *Graph) PrintStats(ctx context.Context, limit int, by SortBy, nomerge bool) error {
 	it, _ := cayley.StartPath(g.store, typeRepo).In(prdType).BuildIterator().Optimize()
 	it, _ = g.store.OptimizeIterator(it)
 	defer it.Close()

@@ -2,17 +2,18 @@ package main
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
 	"os"
+
+	"github.com/spf13/cobra"
 )
 
-var Root = &cobra.Command{
+var root = &cobra.Command{
 	Use:   "codegraph",
-	Short: "tools for working with Git/UAST graphs",
+	Short: "experimental tools for working with git and uast graphs",
 }
 
 func main() {
-	if err := Root.Execute(); err != nil {
+	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

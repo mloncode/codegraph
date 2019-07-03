@@ -1,16 +1,25 @@
 # codegraph
+<img src="logo.png" name="logo" />
+Unofficial experiments with graph structures mainly focused on *git* repositories and *uast* (unified abstract syntax tree) representation.
 
-Experiments with Git/UAST graph.
+### installation
 
-## Git 
+Get the latest [release](https://github.com/cayleygraph/cayley/releases) of Cayley, to be able to query the results.
+
+```bash
+$ go install ./cmd/codegraph
+```
+
+
+## git
 
 Proof of concept - modeling git (commits) with graph database.
 
 ...a little bit inspired by ["Modeling Git Commits with Neo4j"](https://reflectoring.io/git-neo4j/)
 
-### Data model
+### data model
 
-<img src="git_model.png" name="model" />
+<img src="git-model.png" name="git-model" />
 
 #### repo
 
@@ -24,38 +33,49 @@ A commit node represents a commit in git log history. Commits are connected to o
 
 A file node represents a file in git repository. Every commit is connected to own files, but file also can be connected with commits which touched (added, removed, or modified) the file.
 
-### Usage
+### usage
 
 This PoC exposes an API and following tools:
 * import - lets you import a git repository into graph database (backed by cayley.io).
-```
-codegraph git import [options] <repo>
-  -db string
-    	database directory (default ".")
+```bash
+Usage:
+  codegraph git import <repo> [<repos>...] [flags]
+
+Flags:
+  -h, --help   help for import
+
+Global Flags:
+  -a, --db string   database directory (default "./")
 ```
 
 * export - opens a graph database and exports _quads_ in raw format.
-```
-codegraph git export [options]
-  -db string
-    	database directory (default ".")
+```bash
+Usage:
+  codegraph git export [flags]
+
+Flags:
+  -h, --help   help for export
+
+Global Flags:
+  -a, --db string   database directory (default "./")
 ```
 
 * stats  - prints commit statistics per repo (based on data in graph database).
-```
-codegraph git stats [options]
-  -db string
-    	database directory (default ".")
-  -limit int
-    	top commits per git repository (0 means no limit)
-  -nomerge
-    	do not show merge commits
-  -sort string
-    	sort commits by [add, remove, modify, touch, file] (default "touch")
+```bash
+Usage:
+  codegraph git stats [flags]
+
+Flags:
+  -h, --help          help for stats
+  -n, --limit int     top commits per git repository (0 means no limit)
+      --nomerge       do not show merge commits
+      --sort string   sort commits by [add, remove, modify, touch, file] (default "touch")
+
+Global Flags:
+  -a, --db string   database directory (default "./")
 
 
-
-codegraph git stats -limit 3 -sort touch --nomerge
+$ codegraphgit stats --limit 3 --sort touch --nomerge
 
 
 <git@gitlab.com:kuba--/gitgraph.git>
@@ -64,11 +84,9 @@ commit: <198af24465fdfe4b9a74970fd13721a48cd29558>
 "commit 198af24465fdfe4b9a74970fd13721a48cd29558
 Author: Kuba Podgórski
 Date:   Wed Jun 26 08:22:47 2019 +0000
-
     poc implementation
 
     three tools - import git repo into db, export db to raw, print stats
-
 "
 12 files, 9 touched (+, -, #), 9 added(+), 0 removed(-), 0 modified(#)
 --
@@ -76,9 +94,7 @@ commit: <03a5673c3029c599444fad2be6ac37d041584af5>
 "commit 03a5673c3029c599444fad2be6ac37d041584af5
 Author: kuba--
 Date:   Thu Jun 27 01:06:45 2019 +0200
-
     update docs
-
 "
 13 files, 2 touched (+, -, #), 1 added(+), 0 removed(-), 1 modified(#)
 --
@@ -92,39 +108,39 @@ Date:   Tue Jun 25 08:24:16 2019 +0000
 3 files, 1 touched (+, -, #), 0 added(+), 0 removed(-), 1 modified(#)
 ```
 
-## UAST
+## uast
 
-### Installation
-
-Get the latest [release](https://github.com/cayleygraph/cayley/releases) of Cayley, to be able to query the results. 
-
-```bash
-go install ./cmd/codegraph
-```
-
-### Running
+### usage
 
 You will need some UAST files in the YML format. You can get them from any of
 [Babelfish drivers](https://github.com/search?utf8=%E2%9C%93&q=org%3Abblfsh+topic%3Ababelfish+topic%3Adriver&type=Repositories&ref=advsearch&l=&l=)
 (see `./fixtures` folder).
 
-Generate the graph data from UAST:
+* generate the graph data from *uast*.
 ```bash
-codegraph uast quads -o out.nq.gz ./fixtures/*.sem.uast
+Usage:
+  codegraph uast quads <file> [<files>...] [flags]
+
+Flags:
+  -h, --help         help for quads
+  -o, --out string   write output to a file (default "-")
+
+
+$ codegraph uast quads -o out.nq.gz ./fixtures/*.sem.uast
 ```
 
-Import and run Cayley instance with the data:
+* import and run cayley instance with the data.
 ```bash
-cayley http -i out.nq.gz
+$ cayley http -i out.nq.gz
 ```
 
-Web interface should be available at http://127.0.0.1:64210.
+...web interface should be available at http://127.0.0.1:64210.
 
-### Queries
+### queries
 
-#### All identifiers
+#### all identifiers
 
-**Gizmo** query language (Tinkerpop's Gremlin inspired):
+**gizmo** query language (Tinkerpop's Gremlin inspired):
 
 ```javascript
 // Find an unknown node
@@ -137,7 +153,7 @@ g.V().
     Limit(100).All()
 ```
 
-**GraphQL** inspired query language:
+**graphQL** inspired query language:
 
 ```graphql
 {
@@ -148,9 +164,9 @@ g.V().
 }
 ```
 
-#### All imports
+#### all imports
 
-**Gizmo**:
+**gizmo**:
 
 ```javascript
 // Helpers to process different import path nodes.
@@ -193,7 +209,7 @@ g.V().
     })
 ```
 
-**GraphQL** doesn't have a direct equivalent, since it cannot switch on the node type.
+**graphQL** doesn't have a direct equivalent, since it cannot switch on the node type.
 Instead we extract the path node, and optionally load path-related fields from the child node.
 
 ```graphql
@@ -212,9 +228,9 @@ Instead we extract the path node, and optionally load path-related fields from t
 }
 ```
 
-#### All files that import "fmt"
+#### all files that import "fmt"
 
-**Gizmo**:
+**gizmo**:
 
 ```javascript
 var pkg = "fmt"
@@ -234,9 +250,9 @@ g.V().
 
 Again, **GraphQL** doesn't have an equivalent.
 
-#### Import stats
+#### import stats
 
-**Gizmo**, _requires_ a helper from above:
+**gizmo**, _requires_ a helper from above:
 
 ```javascript
 var imports = {}
@@ -254,3 +270,4 @@ g.V().
 
 g.Emit(imports)
 ```
+

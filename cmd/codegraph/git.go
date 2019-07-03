@@ -5,17 +5,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cayleygraph/cayley/quad/nquads"
 	"io"
 	"os"
 	"strings"
 
-	"github.com/MLonCode/codegraph/git"
+	"github.com/cayleygraph/cayley/quad/nquads"
+
+	"github.com/mloncode/codegraph/git"
 	"github.com/spf13/cobra"
 )
 
 func init() {
-	var g *git.GitGraph
+	var g *git.Graph
 	cmdGit := &cobra.Command{
 		Use:   "git <command>",
 		Short: "Git-related commands",
@@ -32,7 +33,7 @@ func init() {
 		}
 		return nil
 	}
-	Root.AddCommand(cmdGit)
+	root.AddCommand(cmdGit)
 
 	cmdQuads := &cobra.Command{
 		Use:   "quads <repo> [<repos>...]",
