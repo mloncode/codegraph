@@ -1,8 +1,6 @@
-<img src="logo.png" name="logo" /> 
-
 # codegraph
 
-An unofficial experiment with graph structures mainly focused on *git* repositories and *uast* (unified abstract syntax tree) representation.
+<img src="logo.png" name="logo" />  An unofficial experiment with graph structures mainly focused on *git* repositories and *uast* (unified abstract syntax tree) representation.
 
 ### installation
 
