@@ -38,10 +38,12 @@ func AsQuads(w quad.Writer, gitpath string) (int, error) {
 	}
 	defer it.Close()
 
+	bw := newSafeWriter(w)
+
 	n := 0
 	err = it.ForEach(func(c *object.Commit) error {
 		n++
-		return importCommit(w, repoIRI, c)
+		return importCommit(bw, repoIRI, c)
 	})
 	return n, err
 }
@@ -72,34 +74,30 @@ func openGit(gitpath string) (*git.Repository, quad.IRI, error) {
 	return repo, repoIRI, nil
 }
 
-func importCommit(w quad.Writer, repoIRI quad.IRI, commit *object.Commit) error {
+func importCommit(w quad.BatchWriter, repoIRI quad.IRI, commit *object.Commit) error {
 	commitIRI := quad.IRI("sha1:" + commit.Hash.String())
 
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   repoIRI,
-		Predicate: prdCommit,
-		Object:    commitIRI,
-	}); err != nil {
-		return err
-	}
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   commitIRI,
-		Predicate: prdType,
-		Object:    typeCommit,
-	}); err != nil {
-		return err
-	}
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   commitIRI,
-		Predicate: prdMetadata,
-		Object:    quad.String(commit.String()),
-	}); err != nil {
-		return err
-	}
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   commitIRI,
-		Predicate: prdMessage,
-		Object:    quad.String(commit.Message),
+	if _, err := w.WriteQuads([]quad.Quad{
+		{
+			Subject:   repoIRI,
+			Predicate: prdCommit,
+			Object:    commitIRI,
+		},
+		{
+			Subject:   commitIRI,
+			Predicate: prdType,
+			Object:    typeCommit,
+		},
+		{
+			Subject:   commitIRI,
+			Predicate: prdMetadata,
+			Object:    quad.String(commit.String()),
+		},
+		{
+			Subject:   commitIRI,
+			Predicate: prdMessage,
+			Object:    quad.String(commit.Message),
+		},
 	}); err != nil {
 		return err
 	}
@@ -112,17 +110,17 @@ func importCommit(w quad.Writer, repoIRI quad.IRI, commit *object.Commit) error 
 
 	// dump parents
 	for _, p := range commit.ParentHashes {
-		if err := w.WriteQuad(quad.Quad{
-			Subject:   commitIRI,
-			Predicate: prdParent,
-			Object:    quad.IRI("sha1:" + p.String()),
-		}); err != nil {
-			return err
-		}
-		if err := w.WriteQuad(quad.Quad{
-			Subject:   quad.IRI("sha1:" + p.String()),
-			Predicate: prdChild,
-			Object:    commitIRI,
+		if _, err := w.WriteQuads([]quad.Quad{
+			{
+				Subject:   commitIRI,
+				Predicate: prdParent,
+				Object:    quad.IRI("sha1:" + p.String()),
+			},
+			{
+				Subject:   quad.IRI("sha1:" + p.String()),
+				Predicate: prdChild,
+				Object:    commitIRI,
+			},
 		}); err != nil {
 			return err
 		}
@@ -170,64 +168,60 @@ func importCommit(w quad.Writer, repoIRI quad.IRI, commit *object.Commit) error 
 	return nil
 }
 
-func importSignature(w quad.Writer, commit, pred quad.IRI, sig object.Signature) error {
+func importSignature(w quad.BatchWriter, commit, pred quad.IRI, sig object.Signature) error {
 	// auto-join authors on exact match
 	h := md5.Sum([]byte(sig.Name + "\x00" + sig.Email))
 	id := quad.BNode(hex.EncodeToString(h[:]))
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   commit,
-		Predicate: pred,
-		Object:    id,
-		Label:     quad.Time(sig.When),
-	}); err != nil {
-		return err
-	}
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   id,
-		Predicate: prdType,
-		Object:    typeAuthor,
-	}); err != nil {
-		return err
-	}
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   id,
-		Predicate: prdName,
-		Object:    quad.String(sig.Name),
-	}); err != nil {
-		return err
-	}
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   id,
-		Predicate: prdEmail,
-		Object:    quad.IRI(sig.Email),
+	if _, err := w.WriteQuads([]quad.Quad{
+		{
+			Subject:   commit,
+			Predicate: pred,
+			Object:    id,
+			Label:     quad.Time(sig.When),
+		},
+		{
+			Subject:   id,
+			Predicate: prdType,
+			Object:    typeAuthor,
+		},
+		{
+			Subject:   id,
+			Predicate: prdName,
+			Object:    quad.String(sig.Name),
+		},
+		{
+			Subject:   id,
+			Predicate: prdEmail,
+			Object:    quad.IRI(sig.Email),
+		},
 	}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func importFile(w quad.Writer, commitIRI quad.IRI, file *object.File) error {
+func importFile(w quad.BatchWriter, commitIRI quad.IRI, file *object.File) error {
 	fileIRI := quad.IRI("sha1:" + file.Hash.String())
 
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   commitIRI,
-		Predicate: prdFile,
-		Object:    fileIRI,
-		Label:     quad.String(file.Name),
-	}); err != nil {
-		return err
-	}
-	if err := w.WriteQuad(quad.Quad{
-		Subject:   fileIRI,
-		Predicate: prdType,
-		Object:    typeFile,
+	if _, err := w.WriteQuads([]quad.Quad{
+		{
+			Subject:   commitIRI,
+			Predicate: prdFile,
+			Object:    fileIRI,
+			Label:     quad.String(file.Name),
+		},
+		{
+			Subject:   fileIRI,
+			Predicate: prdType,
+			Object:    typeFile,
+		},
 	}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func importChange(w quad.Writer, commitIRI quad.IRI, change *object.Change) error {
+func importChange(w quad.BatchWriter, commitIRI quad.IRI, change *object.Change) error {
 	action, err := change.Action()
 	if err != nil {
 		return err
@@ -238,27 +232,51 @@ func importChange(w quad.Writer, commitIRI quad.IRI, change *object.Change) erro
 
 	switch action {
 	case merkletrie.Delete:
-		err = w.WriteQuad(quad.Quad{
+		_, err = w.WriteQuads([]quad.Quad{{
 			Subject:   fromIRI,
 			Predicate: prdRemove,
 			Object:    commitIRI,
 			Label:     quad.String(change.From.Name),
-		})
+		}})
 	case merkletrie.Insert:
-		err = w.WriteQuad(quad.Quad{
+		_, err = w.WriteQuads([]quad.Quad{{
 			Subject:   toIRI,
 			Predicate: prdAdd,
 			Object:    commitIRI,
 			Label:     quad.String(change.To.Name),
-		})
+		}})
 	case merkletrie.Modify:
-		err = w.WriteQuad(quad.Quad{
+		_, err = w.WriteQuads([]quad.Quad{{
 			Subject:   toIRI,
 			Predicate: prdModify,
 			Object:    commitIRI,
 			Label:     quad.String(change.To.Name),
-		})
+		}})
 	}
 
 	return err
+}
+
+func newSafeWriter(w quad.Writer) quad.BatchWriter {
+	if bw, ok := w.(quad.BatchWriter); ok {
+		return &batchWriter{bw: bw}
+	}
+	return &batchWriter{w: w}
+}
+
+type batchWriter struct {
+	w  quad.Writer
+	bw quad.BatchWriter
+}
+
+func (w *batchWriter) WriteQuads(buf []quad.Quad) (int, error) {
+	if w.bw != nil {
+		return w.bw.WriteQuads(buf)
+	}
+	for i, q := range buf {
+		if err := w.w.WriteQuad(q); err != nil {
+			return i, err
+		}
+	}
+	return len(buf), nil
 }
