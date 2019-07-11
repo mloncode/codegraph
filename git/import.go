@@ -19,6 +19,9 @@ func AsQuads(w quad.Writer, gitpath string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	if err = writeGephiMetadata(w); err != nil {
+		return 0, err
+	}
 
 	if err = w.WriteQuad(quad.Quad{
 		Subject:   repoIRI,
