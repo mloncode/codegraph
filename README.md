@@ -108,6 +108,10 @@ Date:   Tue Jun 25 08:24:16 2019 +0000
 3 files, 1 touched (+, -, #), 0 added(+), 0 removed(-), 1 modified(#)
 ```
 
+### visualization
+
+If you'd like to visualize the graph, check this [page](./gephi-viz.md).
+
 ## uast
 
 ### usage
