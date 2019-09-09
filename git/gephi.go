@@ -8,8 +8,8 @@ const (
 
 func writeGephiMetadata(w quad.Writer) error {
 	for _, pred := range []quad.IRI{
-		prdMetadata,
-		prdMessage,
+		PredMetadata,
+		PredMessage,
 	} {
 		if err := w.WriteQuad(quad.Quad{
 			Subject:   pred,

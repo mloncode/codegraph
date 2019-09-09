@@ -1,8 +1,9 @@
-package git
+package codegraph
 
 import (
 	"context"
 	"fmt"
+	"github.com/mloncode/codegraph/git"
 	"sort"
 	"strings"
 
@@ -36,7 +37,7 @@ type (
 
 // PrintStats prints commit statistics
 func (g *Graph) PrintStats(ctx context.Context, limit int, by SortBy, nomerge bool) error {
-	it, _ := cayley.StartPath(g.store, typeRepo).In(prdType).BuildIterator().Optimize()
+	it, _ := cayley.StartPath(g.store, git.TypeRepo).In(git.PredType).BuildIterator().Optimize()
 	it, _ = g.store.OptimizeIterator(it)
 	defer it.Close()
 
@@ -53,7 +54,7 @@ func (g *Graph) PrintStats(ctx context.Context, limit int, by SortBy, nomerge bo
 func printStats(ctx context.Context, qs graph.QuadStore, repo quad.Value, limit int, by SortBy, nomerge bool) error {
 	var stats []*CommitStats
 
-	it, _ := cayley.StartPath(qs, repo).Out(prdCommit).BuildIterator().Optimize()
+	it, _ := cayley.StartPath(qs, repo).Out(git.PredCommit).BuildIterator().Optimize()
 	it, _ = qs.OptimizeIterator(it)
 	for it.Next(ctx) {
 		commit := qs.NameOf(it.Result())
@@ -90,7 +91,7 @@ func commitStats(ctx context.Context, qs graph.QuadStore, commit quad.Value) *Co
 		Hash: commit.String(),
 	}
 
-	it, _ := path.StartPath(qs, commit).Out(prdMetadata).BuildIterator().Optimize()
+	it, _ := path.StartPath(qs, commit).Out(git.PredMetadata).BuildIterator().Optimize()
 	it, _ = qs.OptimizeIterator(it)
 	if it.Next(ctx) {
 		if lbl := qs.NameOf(it.Result()); lbl != nil {
@@ -100,11 +101,11 @@ func commitStats(ctx context.Context, qs graph.QuadStore, commit quad.Value) *Co
 	it.Close()
 
 	path := cayley.StartPath(qs, commit)
-	cs.NumParents = countPaths(ctx, qs, path.Out(prdParent))
-	cs.NumFiles = countPaths(ctx, qs, path.Out(prdFile))
-	cs.NumAdded = countPaths(ctx, qs, path.In(prdAdd))
-	cs.NumRemoved = countPaths(ctx, qs, path.In(prdRemove))
-	cs.NumModified = countPaths(ctx, qs, path.In(prdModify))
+	cs.NumParents = countPaths(ctx, qs, path.Out(git.PredParent))
+	cs.NumFiles = countPaths(ctx, qs, path.Out(git.PredFile))
+	cs.NumAdded = countPaths(ctx, qs, path.In(git.PredAdd))
+	cs.NumRemoved = countPaths(ctx, qs, path.In(git.PredRemove))
+	cs.NumModified = countPaths(ctx, qs, path.In(git.PredModify))
 	return cs
 }
 

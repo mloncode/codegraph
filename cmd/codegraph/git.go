@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mloncode/codegraph"
 	"io"
 	"os"
 	"strings"
@@ -16,7 +17,7 @@ import (
 )
 
 func init() {
-	var g *git.Graph
+	var g *codegraph.Graph
 	cmdGit := &cobra.Command{
 		Use:   "git <command>",
 		Short: "Git-related commands",
@@ -24,7 +25,7 @@ func init() {
 	db := cmdGit.PersistentFlags().StringP("db", "a", "./", "database directory")
 	cmdGit.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		var err error
-		g, err = git.Open(*db)
+		g, err = codegraph.Open(*db)
 		return err
 	}
 	cmdGit.PersistentPostRunE = func(cmd *cobra.Command, args []string) error {
@@ -65,10 +66,13 @@ func init() {
 		cmd.SilenceUsage = true
 		qw := nquads.NewWriter(w)
 		c = append(c, qw)
+		exp, err := git.NewQuadExporter(qw)
+		if err != nil {
+			return err
+		}
 		for _, path := range args {
 			fmt.Fprintln(os.Stderr, path)
-			_, err := git.AsQuads(qw, path)
-			if err != nil {
+			if err := exp.ExportPath(path); err != nil {
 				return err
 			}
 		}
@@ -102,15 +106,12 @@ func init() {
 			if len(args) == 0 {
 				return errors.New("expected at least one argument")
 			}
-			var total int
 			for _, path := range args {
-				st, err := g.Import(context.TODO(), path)
+				err := g.Import(context.TODO(), path, nil)
 				if err != nil {
 					return err
 				}
-				total += st.Commits
 			}
-			fmt.Fprintf(os.Stderr, "Imported: %d commits\n", total)
 			return nil
 		},
 	}
@@ -123,15 +124,12 @@ func init() {
 			if len(args) == 0 {
 				return errors.New("expected at least one argument")
 			}
-			var total int
 			for _, path := range args {
-				st, err := g.Import(context.TODO(), path)
+				err := g.Import(context.TODO(), path, nil)
 				if err != nil {
 					return err
 				}
-				total += st.Commits
 			}
-			fmt.Fprintf(os.Stderr, "Imported: %d commits\n", total)
 			return nil
 		},
 	}
@@ -143,30 +141,30 @@ func init() {
 			*limit = 0
 		}
 
-		var by git.SortBy
+		var by codegraph.SortBy
 		switch strings.ToLower(*sort) {
 		case "add":
-			by = func(cs1, cs2 *git.CommitStats) bool {
+			by = func(cs1, cs2 *codegraph.CommitStats) bool {
 				return cs1.NumAdded > cs2.NumAdded
 			}
 
 		case "remove":
-			by = func(cs1, cs2 *git.CommitStats) bool {
+			by = func(cs1, cs2 *codegraph.CommitStats) bool {
 				return cs1.NumRemoved > cs2.NumRemoved
 			}
 
 		case "modify":
-			by = func(cs1, cs2 *git.CommitStats) bool {
+			by = func(cs1, cs2 *codegraph.CommitStats) bool {
 				return cs1.NumModified > cs2.NumModified
 			}
 
 		case "file":
-			by = func(cs1, cs2 *git.CommitStats) bool {
+			by = func(cs1, cs2 *codegraph.CommitStats) bool {
 				return cs1.NumFiles > cs2.NumFiles
 			}
 
 		case "touch":
-			by = func(cs1, cs2 *git.CommitStats) bool {
+			by = func(cs1, cs2 *codegraph.CommitStats) bool {
 				n1 := cs1.NumAdded + cs1.NumRemoved + cs1.NumModified
 				n2 := cs2.NumAdded + cs2.NumRemoved + cs2.NumModified
 				return n1 > n2

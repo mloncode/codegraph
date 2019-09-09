@@ -1,71 +1,121 @@
 package git
 
 import (
-	"context"
 	"crypto/md5"
 	"encoding/hex"
-	"io/ioutil"
-	"log"
-	"os"
 	"strings"
-	"time"
 
 	bblfsh "github.com/bblfsh/go-client/v4"
-	"github.com/cayleygraph/cayley/graph"
 	"github.com/cayleygraph/cayley/quad"
-	"github.com/mloncode/codegraph/uast"
+	"github.com/cayleygraph/cayley/voc/rdf"
+	"github.com/cayleygraph/cayley/voc/schema"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 	"gopkg.in/src-d/go-git.v4/utils/merkletrie"
 )
 
-type ImportStats struct {
+const (
+	// TypeRepo node keep (back) references to all to level nodes (so far used only for repos)
+	TypeRepo   = quad.IRI("git:Repo")
+	TypeBranch = quad.IRI("git:Branch")
+	TypeCommit = quad.IRI("git:Commit")
+	TypeFile   = quad.IRI("git:File")
+	TypeAuthor = quad.IRI("git:Author")
+
+	// node type predicate
+	PredType = quad.IRI(rdf.Type)
+
+	// commits
+	PredBranch   = quad.IRI("git:branch")
+	PredCommit   = quad.IRI("git:commit")
+	PredMetadata = quad.IRI("git:metadata")
+	PredMessage  = quad.IRI("git:message")
+	PredAuthor   = quad.IRI("git:author")
+	PredCommiter = quad.IRI("git:commiter")
+	PredName     = quad.IRI(schema.Name)
+	PredEmail    = quad.IRI("git:email")
+	PredChild    = quad.IRI("git:child")
+	PredParent   = quad.IRI("git:parent")
+
+	// files
+	PredFile     = quad.IRI("git:file")
+	PredFilename = quad.IRI("git:filename")
+	PredAdd      = quad.IRI("git:add")
+	PredRemove   = quad.IRI("git:remove")
+	PredModify   = quad.IRI("git:modify")
+)
+
+// ExportStats contains Git-to-Quads export statistics.
+type ExportStats struct {
 	Commits int
+	Files   int
+	Quads   int
 }
 
-// AsQuads writes a git repository history as a set of quads.
-// It returns the number of commits processed.
-func AsQuads(w quad.Writer, gitpath string) (ImportStats, error) {
+// QuadExporter exports one or more Git repositories as quads.
+type QuadExporter struct {
+	w   quad.Writer
+	bw  quad.BatchWriter
+	err error
+	cli *bblfsh.Client
+
+	Hooks struct {
+		OnFile func(id quad.Value, f *object.File) error
+	}
+	ExportStats
+}
+
+// NewQuadExporter creates a new exporter that writes Git objects as quads.
+func NewQuadExporter(w quad.Writer) (*QuadExporter, error) {
+	exp := &QuadExporter{
+		w:  w,
+		bw: newBatchWriter(w),
+	}
+	if err := writeGephiMetadata(w); err != nil {
+		return nil, err
+	}
+	return exp, nil
+}
+
+// ExportPath writes a git repository at a given path as a set of quads.
+func (e *QuadExporter) ExportPath(gitpath string) error {
 	repo, repoIRI, err := openGit(gitpath)
 	if err != nil {
-		return ImportStats{}, err
+		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-	addr := os.Getenv("BBLFSH_ADDR")
-	addrSet := addr != ""
-	if !addrSet {
-		addr = "localhost:9432"
-	}
-	cli, err := bblfsh.NewClientContext(ctx, addr)
-	if err != nil && (addrSet || !os.IsTimeout(err)) {
-		return ImportStats{}, err
-	}
-	if cli == nil {
-		log.Println("disabling UAST export:", err)
-	}
-	if err = writeGephiMetadata(w); err != nil {
-		return ImportStats{}, err
-	}
-	imp := &importer{
+
+	imp := &repoExporter{
+		e:       e,
 		repo:    repo,
 		repoIRI: repoIRI,
-		w:       w,
-		bw:      newSafeWriter(w),
-		cli:     cli,
 	}
 	imp.seen.files = make(map[plumbing.Hash]struct{})
 	defer imp.Close()
 	return imp.Do()
 }
 
-type importer struct {
+// WriteQuads writes quads to the underlying writer.
+func (e *QuadExporter) WriteQuads(q ...quad.Quad) error {
+	if e.err != nil {
+		return e.err
+	}
+	var n int
+	n, e.err = e.bw.WriteQuads(q)
+	e.Quads += n
+	return e.err
+}
+
+// Close implements io.Closer.
+func (e *QuadExporter) Close() error {
+	return nil
+}
+
+type repoExporter struct {
+	e *QuadExporter
+
 	repo    *git.Repository
 	repoIRI quad.IRI
-	w       quad.Writer
-	bw      quad.BatchWriter
-	stats   ImportStats
 	cli     *bblfsh.Client // optional
 
 	seen struct {
@@ -73,23 +123,18 @@ type importer struct {
 	}
 }
 
-func (imp *importer) Do() (ImportStats, error) {
-	err := imp.do()
-	return imp.stats, err
-}
-
-func (imp *importer) Close() error {
+func (imp *repoExporter) Close() error {
 	if imp.cli != nil {
 		imp.cli.Close()
 	}
 	return nil
 }
 
-func (imp *importer) do() error {
-	if err := imp.w.WriteQuad(quad.Quad{
+func (imp *repoExporter) Do() error {
+	if err := imp.e.w.WriteQuad(quad.Quad{
 		Subject:   imp.repoIRI,
-		Predicate: prdType,
-		Object:    typeRepo,
+		Predicate: PredType,
+		Object:    TypeRepo,
 	}); err != nil {
 		return err
 	}
@@ -102,7 +147,7 @@ func (imp *importer) do() error {
 	return nil
 }
 
-func (imp *importer) importBranches() error {
+func (imp *repoExporter) importBranches() error {
 	it, err := imp.repo.Branches()
 	if err != nil {
 		return err
@@ -113,35 +158,32 @@ func (imp *importer) importBranches() error {
 		commitIRI := gitHashToIRI(b.Hash())
 		branchIRI := imp.repoIRI + "/" + quad.IRI(b.Name())
 
-		if _, err := imp.bw.WriteQuads([]quad.Quad{
+		return imp.e.WriteQuads([]quad.Quad{
 			{
 				Subject:   imp.repoIRI,
-				Predicate: prdBranch,
+				Predicate: PredBranch,
 				Object:    branchIRI,
 			},
 			{
 				Subject:   branchIRI,
-				Predicate: prdCommit,
+				Predicate: PredCommit,
 				Object:    commitIRI,
 			},
 			{
 				Subject:   branchIRI,
-				Predicate: prdType,
-				Object:    typeBranch,
+				Predicate: PredType,
+				Object:    TypeBranch,
 			},
 			{
 				Subject:   branchIRI,
-				Predicate: prdName,
+				Predicate: PredName,
 				Object:    quad.String(strings.TrimPrefix(string(b.Name()), "refs/heads/")),
 			},
-		}); err != nil {
-			return err
-		}
-		return nil
+		}...)
 	})
 }
 
-func (imp *importer) importCommits() error {
+func (imp *repoExporter) importCommits() error {
 	it, err := imp.repo.Log(&git.LogOptions{})
 	if err != nil {
 		return err
@@ -149,18 +191,9 @@ func (imp *importer) importCommits() error {
 	defer it.Close()
 
 	return it.ForEach(func(c *object.Commit) error {
-		imp.stats.Commits++
+		imp.e.Commits++
 		return imp.importCommit(c)
 	})
-}
-
-// Import imports git repository into graph database
-// Returns number of imported commits
-func (g *Graph) Import(_ context.Context, gitpath string) (ImportStats, error) {
-	w := graph.NewWriter(g.store)
-	defer w.Close()
-
-	return AsQuads(w, gitpath)
 }
 
 func openGit(gitpath string) (*git.Repository, quad.IRI, error) {
@@ -184,54 +217,54 @@ func gitHashToIRI(h plumbing.Hash) quad.IRI {
 	return quad.IRI("sha1:" + h.String())
 }
 
-func (imp *importer) importCommit(commit *object.Commit) error {
+func (imp *repoExporter) importCommit(commit *object.Commit) error {
 	commitIRI := gitHashToIRI(commit.Hash)
 
-	if _, err := imp.bw.WriteQuads([]quad.Quad{
+	if err := imp.e.WriteQuads([]quad.Quad{
 		{
 			Subject:   imp.repoIRI,
-			Predicate: prdCommit,
+			Predicate: PredCommit,
 			Object:    commitIRI,
 		},
 		{
 			Subject:   commitIRI,
-			Predicate: prdType,
-			Object:    typeCommit,
+			Predicate: PredType,
+			Object:    TypeCommit,
 		},
 		{
 			Subject:   commitIRI,
-			Predicate: prdMetadata,
+			Predicate: PredMetadata,
 			Object:    quad.String(commit.String()),
 		},
 		{
 			Subject:   commitIRI,
-			Predicate: prdMessage,
+			Predicate: PredMessage,
 			Object:    quad.String(commit.Message),
 		},
-	}); err != nil {
+	}...); err != nil {
 		return err
 	}
-	if err := imp.importSignature(commitIRI, prdAuthor, commit.Author); err != nil {
+	if err := imp.importSignature(commitIRI, PredAuthor, commit.Author); err != nil {
 		return err
 	}
-	if err := imp.importSignature(commitIRI, prdCommiter, commit.Committer); err != nil {
+	if err := imp.importSignature(commitIRI, PredCommiter, commit.Committer); err != nil {
 		return err
 	}
 
 	// dump parents
 	for _, p := range commit.ParentHashes {
-		if _, err := imp.bw.WriteQuads([]quad.Quad{
+		if err := imp.e.WriteQuads([]quad.Quad{
 			{
 				Subject:   commitIRI,
-				Predicate: prdParent,
+				Predicate: PredParent,
 				Object:    gitHashToIRI(p),
 			},
 			{
 				Subject:   gitHashToIRI(p),
-				Predicate: prdChild,
+				Predicate: PredChild,
 				Object:    commitIRI,
 			},
-		}); err != nil {
+		}...); err != nil {
 			return err
 		}
 	}
@@ -277,11 +310,12 @@ func (imp *importer) importCommit(commit *object.Commit) error {
 	return nil
 }
 
-func (imp *importer) importSignature(commit, pred quad.IRI, sig object.Signature) error {
+func (imp *repoExporter) importSignature(commit, pred quad.IRI, sig object.Signature) error {
 	// auto-join authors on exact match
 	h := md5.Sum([]byte(sig.Name + "\x00" + sig.Email))
 	id := quad.BNode(hex.EncodeToString(h[:]))
-	if _, err := imp.bw.WriteQuads([]quad.Quad{
+
+	return imp.e.WriteQuads([]quad.Quad{
 		{
 			Subject:   commit,
 			Predicate: pred,
@@ -290,34 +324,31 @@ func (imp *importer) importSignature(commit, pred quad.IRI, sig object.Signature
 		},
 		{
 			Subject:   id,
-			Predicate: prdType,
-			Object:    typeAuthor,
+			Predicate: PredType,
+			Object:    TypeAuthor,
 		},
 		{
 			Subject:   id,
-			Predicate: prdName,
+			Predicate: PredName,
 			Object:    quad.String(sig.Name),
 		},
 		{
 			Subject:   id,
-			Predicate: prdEmail,
+			Predicate: PredEmail,
 			Object:    quad.IRI(sig.Email),
 		},
-	}); err != nil {
-		return err
-	}
-	return nil
+	}...)
 }
 
-func (imp *importer) importFile(commitIRI quad.IRI, file *object.File) error {
+func (imp *repoExporter) importFile(commitIRI quad.IRI, file *object.File) error {
 	fileIRI := gitHashToIRI(file.Hash)
 
-	if _, err := imp.bw.WriteQuads([]quad.Quad{{
+	if err := imp.e.WriteQuads([]quad.Quad{{
 		Subject:   commitIRI,
-		Predicate: prdFile,
+		Predicate: PredFile,
 		Object:    fileIRI,
 		Label:     quad.String(file.Name),
-	}}); err != nil {
+	}}...); err != nil {
 		return err
 	}
 
@@ -325,99 +356,66 @@ func (imp *importer) importFile(commitIRI quad.IRI, file *object.File) error {
 		return nil
 	}
 	imp.seen.files[file.Hash] = struct{}{}
+	imp.e.Files++
 
-	if _, err := imp.bw.WriteQuads([]quad.Quad{
+	if err := imp.e.WriteQuads([]quad.Quad{
 		{
 			Subject:   fileIRI,
-			Predicate: prdType,
-			Object:    typeFile,
+			Predicate: PredType,
+			Object:    TypeFile,
 		},
 		{
 			Subject:   fileIRI,
-			Predicate: prdFilename,
+			Predicate: PredFilename,
 			Object:    quad.String(file.Name),
 		},
-	}); err != nil {
+	}...); err != nil {
 		return err
 	}
-
-	if imp.cli == nil {
-		// don't import UASTs
-		log.Println("skipping UAST:", commitIRI)
+	if imp.e.Hooks.OnFile == nil {
 		return nil
 	}
-	rc, err := file.Reader()
-	if err != nil {
-		return err
-	}
-	defer rc.Close()
-	data, err := ioutil.ReadAll(rc)
-	if err != nil {
-		return err
-	}
-	u, lang, err := imp.cli.NewParseRequest().
-		Filename(file.Name).
-		Content(string(data)).
-		Mode(bblfsh.Semantic).UAST()
-	if err != nil {
-		estr := err.Error()
-		// TODO(dennwc): return specific error in the client
-		if strings.Contains(estr, "missing driver for language") {
-			return nil
-		} else if strings.Contains(estr, "unknown source file encoding") {
-			return nil
-		}
-		return err
-	}
-	if lang != "" {
-		if _, err := imp.bw.WriteQuads([]quad.Quad{{
-			Subject:   fileIRI,
-			Predicate: prdLang,
-			Object:    quad.String(lang),
-		}}); err != nil {
-			return err
-		}
-	}
-	return uast.AsQuads(imp.w, fileIRI, u)
+	return imp.e.Hooks.OnFile(fileIRI, file)
 }
 
-func (imp *importer) importChange(commitIRI quad.IRI, change *object.Change) error {
+func (imp *repoExporter) importChange(commitIRI quad.IRI, change *object.Change) error {
 	action, err := change.Action()
 	if err != nil {
 		return err
 	}
-
 	fromIRI := gitHashToIRI(change.From.TreeEntry.Hash)
 	toIRI := gitHashToIRI(change.To.TreeEntry.Hash)
 
+	var q quad.Quad
 	switch action {
 	case merkletrie.Delete:
-		_, err = imp.bw.WriteQuads([]quad.Quad{{
+		q = quad.Quad{
 			Subject:   fromIRI,
-			Predicate: prdRemove,
+			Predicate: PredRemove,
 			Object:    commitIRI,
 			Label:     quad.String(change.From.Name),
-		}})
+		}
 	case merkletrie.Insert:
-		_, err = imp.bw.WriteQuads([]quad.Quad{{
+		q = quad.Quad{
 			Subject:   toIRI,
-			Predicate: prdAdd,
+			Predicate: PredAdd,
 			Object:    commitIRI,
 			Label:     quad.String(change.To.Name),
-		}})
+		}
 	case merkletrie.Modify:
-		_, err = imp.bw.WriteQuads([]quad.Quad{{
+		q = quad.Quad{
 			Subject:   toIRI,
-			Predicate: prdModify,
+			Predicate: PredModify,
 			Object:    commitIRI,
 			Label:     quad.String(change.To.Name),
-		}})
+		}
+	default:
+		return nil
 	}
-
-	return err
+	return imp.e.WriteQuads(q)
 }
 
-func newSafeWriter(w quad.Writer) quad.BatchWriter {
+func newBatchWriter(w quad.Writer) quad.BatchWriter {
 	if bw, ok := w.(quad.BatchWriter); ok {
 		return &batchWriter{bw: bw}
 	}
