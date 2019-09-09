@@ -104,11 +104,11 @@ func init() {
 			}
 			var total int
 			for _, path := range args {
-				n, err := g.Import(context.TODO(), path)
+				st, err := g.Import(context.TODO(), path)
 				if err != nil {
 					return err
 				}
-				total += n
+				total += st.Commits
 			}
 			fmt.Fprintf(os.Stderr, "Imported: %d commits\n", total)
 			return nil
@@ -125,11 +125,11 @@ func init() {
 			}
 			var total int
 			for _, path := range args {
-				n, err := g.Import(context.TODO(), path)
+				st, err := g.Import(context.TODO(), path)
 				if err != nil {
 					return err
 				}
-				total += n
+				total += st.Commits
 			}
 			fmt.Fprintf(os.Stderr, "Imported: %d commits\n", total)
 			return nil

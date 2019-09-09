@@ -8,49 +8,73 @@ import (
 	"github.com/cayleygraph/cayley/graph"
 	"github.com/cayleygraph/cayley/quad"
 	"gopkg.in/src-d/go-git.v4"
+	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 	"gopkg.in/src-d/go-git.v4/utils/merkletrie"
 )
 
+type ImportStats struct {
+	Commits int
+}
+
 // AsQuads writes a git repository history as a set of quads.
 // It returns the number of commits processed.
-func AsQuads(w quad.Writer, gitpath string) (int, error) {
+func AsQuads(w quad.Writer, gitpath string) (ImportStats, error) {
 	repo, repoIRI, err := openGit(gitpath)
 	if err != nil {
-		return 0, err
+		return ImportStats{}, err
 	}
 	if err = writeGephiMetadata(w); err != nil {
-		return 0, err
+		return ImportStats{}, err
 	}
+	imp := &importer{
+		repo:    repo,
+		repoIRI: repoIRI,
+		w:       w,
+		bw:      newSafeWriter(w),
+	}
+	return imp.Do()
+}
 
-	if err = w.WriteQuad(quad.Quad{
-		Subject:   repoIRI,
+type importer struct {
+	repo    *git.Repository
+	repoIRI quad.IRI
+	w       quad.Writer
+	bw      quad.BatchWriter
+	stats   ImportStats
+}
+
+func (imp *importer) Do() (ImportStats, error) {
+	err := imp.do()
+	return imp.stats, err
+}
+
+func (imp *importer) do() error {
+	if err := imp.w.WriteQuad(quad.Quad{
+		Subject:   imp.repoIRI,
 		Predicate: prdType,
 		Object:    typeRepo,
 	}); err != nil {
-		return 0, err
+		return err
 	}
 
 	// import commits
-	it, err := repo.Log(&git.LogOptions{})
+	it, err := imp.repo.Log(&git.LogOptions{})
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer it.Close()
 
-	bw := newSafeWriter(w)
-
-	n := 0
 	err = it.ForEach(func(c *object.Commit) error {
-		n++
-		return importCommit(bw, repoIRI, c)
+		imp.stats.Commits++
+		return imp.importCommit(c)
 	})
-	return n, err
+	return err
 }
 
 // Import imports git repository into graph database
 // Returns number of imported commits
-func (g *Graph) Import(_ context.Context, gitpath string) (int, error) {
+func (g *Graph) Import(_ context.Context, gitpath string) (ImportStats, error) {
 	w := graph.NewWriter(g.store)
 	defer w.Close()
 
@@ -74,12 +98,16 @@ func openGit(gitpath string) (*git.Repository, quad.IRI, error) {
 	return repo, repoIRI, nil
 }
 
-func importCommit(w quad.BatchWriter, repoIRI quad.IRI, commit *object.Commit) error {
-	commitIRI := quad.IRI("sha1:" + commit.Hash.String())
+func gitHashToIRI(h plumbing.Hash) quad.IRI {
+	return quad.IRI("sha1:" + h.String())
+}
 
-	if _, err := w.WriteQuads([]quad.Quad{
+func (imp *importer) importCommit(commit *object.Commit) error {
+	commitIRI := gitHashToIRI(commit.Hash)
+
+	if _, err := imp.bw.WriteQuads([]quad.Quad{
 		{
-			Subject:   repoIRI,
+			Subject:   imp.repoIRI,
 			Predicate: prdCommit,
 			Object:    commitIRI,
 		},
@@ -101,23 +129,23 @@ func importCommit(w quad.BatchWriter, repoIRI quad.IRI, commit *object.Commit) e
 	}); err != nil {
 		return err
 	}
-	if err := importSignature(w, commitIRI, prdAuthor, commit.Author); err != nil {
+	if err := imp.importSignature(commitIRI, prdAuthor, commit.Author); err != nil {
 		return err
 	}
-	if err := importSignature(w, commitIRI, prdCommiter, commit.Committer); err != nil {
+	if err := imp.importSignature(commitIRI, prdCommiter, commit.Committer); err != nil {
 		return err
 	}
 
 	// dump parents
 	for _, p := range commit.ParentHashes {
-		if _, err := w.WriteQuads([]quad.Quad{
+		if _, err := imp.bw.WriteQuads([]quad.Quad{
 			{
 				Subject:   commitIRI,
 				Predicate: prdParent,
-				Object:    quad.IRI("sha1:" + p.String()),
+				Object:    gitHashToIRI(p),
 			},
 			{
-				Subject:   quad.IRI("sha1:" + p.String()),
+				Subject:   gitHashToIRI(p),
 				Predicate: prdChild,
 				Object:    commitIRI,
 			},
@@ -133,7 +161,7 @@ func importCommit(w quad.BatchWriter, repoIRI quad.IRI, commit *object.Commit) e
 	}
 	defer it.Close()
 	if err := it.ForEach(func(f *object.File) error {
-		return importFile(w, commitIRI, f)
+		return imp.importFile(commitIRI, f)
 	}); err != nil {
 		return err
 	}
@@ -160,19 +188,18 @@ func importCommit(w quad.BatchWriter, repoIRI quad.IRI, commit *object.Commit) e
 		return err
 	}
 	for _, ch := range changes {
-		if err = importChange(w, commitIRI, ch); err != nil {
+		if err = imp.importChange(commitIRI, ch); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
-func importSignature(w quad.BatchWriter, commit, pred quad.IRI, sig object.Signature) error {
+func (imp *importer) importSignature(commit, pred quad.IRI, sig object.Signature) error {
 	// auto-join authors on exact match
 	h := md5.Sum([]byte(sig.Name + "\x00" + sig.Email))
 	id := quad.BNode(hex.EncodeToString(h[:]))
-	if _, err := w.WriteQuads([]quad.Quad{
+	if _, err := imp.bw.WriteQuads([]quad.Quad{
 		{
 			Subject:   commit,
 			Predicate: pred,
@@ -200,10 +227,10 @@ func importSignature(w quad.BatchWriter, commit, pred quad.IRI, sig object.Signa
 	return nil
 }
 
-func importFile(w quad.BatchWriter, commitIRI quad.IRI, file *object.File) error {
-	fileIRI := quad.IRI("sha1:" + file.Hash.String())
+func (imp *importer) importFile(commitIRI quad.IRI, file *object.File) error {
+	fileIRI := gitHashToIRI(file.Hash)
 
-	if _, err := w.WriteQuads([]quad.Quad{
+	if _, err := imp.bw.WriteQuads([]quad.Quad{
 		{
 			Subject:   commitIRI,
 			Predicate: prdFile,
@@ -221,32 +248,32 @@ func importFile(w quad.BatchWriter, commitIRI quad.IRI, file *object.File) error
 	return nil
 }
 
-func importChange(w quad.BatchWriter, commitIRI quad.IRI, change *object.Change) error {
+func (imp *importer) importChange(commitIRI quad.IRI, change *object.Change) error {
 	action, err := change.Action()
 	if err != nil {
 		return err
 	}
 
-	fromIRI := quad.IRI("sha1:" + change.From.TreeEntry.Hash.String())
-	toIRI := quad.IRI("sha1:" + change.To.TreeEntry.Hash.String())
+	fromIRI := gitHashToIRI(change.From.TreeEntry.Hash)
+	toIRI := gitHashToIRI(change.To.TreeEntry.Hash)
 
 	switch action {
 	case merkletrie.Delete:
-		_, err = w.WriteQuads([]quad.Quad{{
+		_, err = imp.bw.WriteQuads([]quad.Quad{{
 			Subject:   fromIRI,
 			Predicate: prdRemove,
 			Object:    commitIRI,
 			Label:     quad.String(change.From.Name),
 		}})
 	case merkletrie.Insert:
-		_, err = w.WriteQuads([]quad.Quad{{
+		_, err = imp.bw.WriteQuads([]quad.Quad{{
 			Subject:   toIRI,
 			Predicate: prdAdd,
 			Object:    commitIRI,
 			Label:     quad.String(change.To.Name),
 		}})
 	case merkletrie.Modify:
-		_, err = w.WriteQuads([]quad.Quad{{
+		_, err = imp.bw.WriteQuads([]quad.Quad{{
 			Subject:   toIRI,
 			Predicate: prdModify,
 			Object:    commitIRI,
