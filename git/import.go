@@ -4,9 +4,16 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"io/ioutil"
+	"log"
+	"os"
+	"strings"
+	"time"
 
+	bblfsh "github.com/bblfsh/go-client/v4"
 	"github.com/cayleygraph/cayley/graph"
 	"github.com/cayleygraph/cayley/quad"
+	"github.com/mloncode/codegraph/uast"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
@@ -24,6 +31,20 @@ func AsQuads(w quad.Writer, gitpath string) (ImportStats, error) {
 	if err != nil {
 		return ImportStats{}, err
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	addr := os.Getenv("BBLFSH_ADDR")
+	addrSet := addr != ""
+	if !addrSet {
+		addr = "localhost:9432"
+	}
+	cli, err := bblfsh.NewClientContext(ctx, addr)
+	if err != nil && (addrSet || !os.IsTimeout(err)) {
+		return ImportStats{}, err
+	}
+	if cli == nil {
+		log.Println("disabling UAST export:", err)
+	}
 	if err = writeGephiMetadata(w); err != nil {
 		return ImportStats{}, err
 	}
@@ -32,7 +53,10 @@ func AsQuads(w quad.Writer, gitpath string) (ImportStats, error) {
 		repoIRI: repoIRI,
 		w:       w,
 		bw:      newSafeWriter(w),
+		cli:     cli,
 	}
+	imp.seen.files = make(map[plumbing.Hash]struct{})
+	defer imp.Close()
 	return imp.Do()
 }
 
@@ -42,11 +66,23 @@ type importer struct {
 	w       quad.Writer
 	bw      quad.BatchWriter
 	stats   ImportStats
+	cli     *bblfsh.Client // optional
+
+	seen struct {
+		files map[plumbing.Hash]struct{}
+	}
 }
 
 func (imp *importer) Do() (ImportStats, error) {
 	err := imp.do()
 	return imp.stats, err
+}
+
+func (imp *importer) Close() error {
+	if imp.cli != nil {
+		imp.cli.Close()
+	}
+	return nil
 }
 
 func (imp *importer) do() error {
@@ -57,19 +93,65 @@ func (imp *importer) do() error {
 	}); err != nil {
 		return err
 	}
+	if err := imp.importBranches(); err != nil {
+		return err
+	}
+	if err := imp.importCommits(); err != nil {
+		return err
+	}
+	return nil
+}
 
-	// import commits
+func (imp *importer) importBranches() error {
+	it, err := imp.repo.Branches()
+	if err != nil {
+		return err
+	}
+	defer it.Close()
+
+	return it.ForEach(func(b *plumbing.Reference) error {
+		commitIRI := gitHashToIRI(b.Hash())
+		branchIRI := imp.repoIRI + "/" + quad.IRI(b.Name())
+
+		if _, err := imp.bw.WriteQuads([]quad.Quad{
+			{
+				Subject:   imp.repoIRI,
+				Predicate: prdBranch,
+				Object:    branchIRI,
+			},
+			{
+				Subject:   branchIRI,
+				Predicate: prdCommit,
+				Object:    commitIRI,
+			},
+			{
+				Subject:   branchIRI,
+				Predicate: prdType,
+				Object:    typeBranch,
+			},
+			{
+				Subject:   branchIRI,
+				Predicate: prdName,
+				Object:    quad.String(strings.TrimPrefix(string(b.Name()), "refs/heads/")),
+			},
+		}); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func (imp *importer) importCommits() error {
 	it, err := imp.repo.Log(&git.LogOptions{})
 	if err != nil {
 		return err
 	}
 	defer it.Close()
 
-	err = it.ForEach(func(c *object.Commit) error {
+	return it.ForEach(func(c *object.Commit) error {
 		imp.stats.Commits++
 		return imp.importCommit(c)
 	})
-	return err
 }
 
 // Import imports git repository into graph database
@@ -230,22 +312,73 @@ func (imp *importer) importSignature(commit, pred quad.IRI, sig object.Signature
 func (imp *importer) importFile(commitIRI quad.IRI, file *object.File) error {
 	fileIRI := gitHashToIRI(file.Hash)
 
+	if _, err := imp.bw.WriteQuads([]quad.Quad{{
+		Subject:   commitIRI,
+		Predicate: prdFile,
+		Object:    fileIRI,
+		Label:     quad.String(file.Name),
+	}}); err != nil {
+		return err
+	}
+
+	if _, ok := imp.seen.files[file.Hash]; ok {
+		return nil
+	}
+	imp.seen.files[file.Hash] = struct{}{}
+
 	if _, err := imp.bw.WriteQuads([]quad.Quad{
-		{
-			Subject:   commitIRI,
-			Predicate: prdFile,
-			Object:    fileIRI,
-			Label:     quad.String(file.Name),
-		},
 		{
 			Subject:   fileIRI,
 			Predicate: prdType,
 			Object:    typeFile,
 		},
+		{
+			Subject:   fileIRI,
+			Predicate: prdFilename,
+			Object:    quad.String(file.Name),
+		},
 	}); err != nil {
 		return err
 	}
-	return nil
+
+	if imp.cli == nil {
+		// don't import UASTs
+		log.Println("skipping UAST:", commitIRI)
+		return nil
+	}
+	rc, err := file.Reader()
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	data, err := ioutil.ReadAll(rc)
+	if err != nil {
+		return err
+	}
+	u, lang, err := imp.cli.NewParseRequest().
+		Filename(file.Name).
+		Content(string(data)).
+		Mode(bblfsh.Semantic).UAST()
+	if err != nil {
+		estr := err.Error()
+		// TODO(dennwc): return specific error in the client
+		if strings.Contains(estr, "missing driver for language") {
+			return nil
+		} else if strings.Contains(estr, "unknown source file encoding") {
+			return nil
+		}
+		return err
+	}
+	if lang != "" {
+		if _, err := imp.bw.WriteQuads([]quad.Quad{{
+			Subject:   fileIRI,
+			Predicate: prdLang,
+			Object:    quad.String(lang),
+		}}); err != nil {
+			return err
+		}
+	}
+	return uast.AsQuads(imp.w, fileIRI, u)
 }
 
 func (imp *importer) importChange(commitIRI quad.IRI, change *object.Change) error {

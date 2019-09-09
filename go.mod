@@ -3,6 +3,7 @@ module github.com/mloncode/codegraph
 go 1.12
 
 require (
+	github.com/bblfsh/go-client/v4 v4.1.0
 	github.com/bblfsh/sdk/v3 v3.2.0
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/cayleygraph/cayley v0.7.5

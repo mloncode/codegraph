@@ -14,6 +14,7 @@ const (
 
 	// typeRepo node keep (back) references to all to level nodes (so far used only for repos)
 	typeRepo   = quad.IRI("git:Repo")
+	typeBranch = quad.IRI("git:Branch")
 	typeCommit = quad.IRI("git:Commit")
 	typeFile   = quad.IRI("git:File")
 	typeAuthor = quad.IRI("git:Author")
@@ -22,6 +23,7 @@ const (
 	prdType = quad.IRI(rdf.Type)
 
 	// commits
+	prdBranch   = quad.IRI("git:branch")
 	prdCommit   = quad.IRI("git:commit")
 	prdMetadata = quad.IRI("git:metadata")
 	prdMessage  = quad.IRI("git:message")
@@ -33,10 +35,14 @@ const (
 	prdParent   = quad.IRI("git:parent")
 
 	// files
-	prdFile   = quad.IRI("git:file")
-	prdAdd    = quad.IRI("git:add")
-	prdRemove = quad.IRI("git:remove")
-	prdModify = quad.IRI("git:modify")
+	prdFile     = quad.IRI("git:file")
+	prdFilename = quad.IRI("git:filename")
+	prdAdd      = quad.IRI("git:add")
+	prdRemove   = quad.IRI("git:remove")
+	prdModify   = quad.IRI("git:modify")
+
+	// bblfsh
+	prdLang = quad.IRI("enry:language")
 )
 
 // Graph is a opaque type for cayley graph database handler.
@@ -59,14 +65,9 @@ func Open(dbpath string) (*Graph, error) {
 	return &Graph{store}, nil
 }
 
-// Close closes git graph database (GitGraph is io.Closer)
-func Close(g *Graph) error {
-	return g.Close()
-}
-
 // Close implements io.Closer
 func (g *Graph) Close() error {
-	if g.store != nil {
+	if g != nil && g.store != nil {
 		return g.store.Close()
 	}
 	return nil
